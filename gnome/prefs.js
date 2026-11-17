@@ -5,7 +5,7 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
-import {PROVIDERS, detectAccounts, defaultLabel, probeDir, validProxy} from './lib/core.js';
+import {PROVIDERS, detectAccounts, defaultLabel, probeDir, readText, validProxy} from './lib/core.js';
 
 Gio._promisify(Gtk.FileDialog.prototype, 'select_folder', 'select_folder_finish');
 
@@ -87,15 +87,21 @@ export default class AiQuotaMeterPrefs extends ExtensionPreferences {
         page.add(group);
 
         let rows = [];
-        const rebuild = () => {
-            this._emails = this._cachedEmails();
-            for (const r of rows)
-                group.remove(r);
-            rows = [];
-            const accounts = detectAccounts({
+        let gen = 0;
+        // Async scan; only the newest rebuild may touch the rows.
+        const rebuild = async () => {
+            const mine = ++gen;
+            const emails = await this._cachedEmails();
+            const accounts = await detectAccounts({
                 manual: settings.get_strv('manual-folders'),
                 auto: settings.get_boolean('auto-detect'),
             });
+            if (mine !== gen)
+                return;
+            this._emails = emails;
+            for (const r of rows)
+                group.remove(r);
+            rows = [];
             if (!accounts.length) {
                 const empty = new Adw.ActionRow({title: 'No accounts found', subtitle: 'Log in with Claude Code or Codex, or use “Add Folder…”'});
                 group.add(empty);
@@ -108,20 +114,20 @@ export default class AiQuotaMeterPrefs extends ExtensionPreferences {
             }
         };
 
-        rescan.connect('clicked', rebuild);
+        const safeRebuild = () => rebuild().catch(e => console.error(`AI Quota Meter: ${e.message}`));
+        rescan.connect('clicked', safeRebuild);
         add.connect('clicked', () => this._addFolder(window, settings).catch(e => console.error(e)));
         for (const sig of ['changed::manual-folders', 'changed::auto-detect'])
-            trackSignal(window, settings, settings.connect(sig, rebuild));
-        rebuild();
+            trackSignal(window, settings, settings.connect(sig, safeRebuild));
+        safeRebuild();
         return page;
     }
 
     // Emails the extension learned from the APIs (cache written by extension.js).
-    _cachedEmails() {
+    async _cachedEmails() {
         try {
             const path = GLib.build_filenamev([GLib.get_user_cache_dir(), 'ai-quota-meter', 'state.json']);
-            const [, bytes] = GLib.file_get_contents(path);
-            const accounts = JSON.parse(new TextDecoder().decode(bytes))?.accounts ?? {};
+            const accounts = JSON.parse(await readText(path))?.accounts ?? {};
             return Object.fromEntries(Object.entries(accounts).map(([k, v]) => [k, typeof v?.email === 'string' ? v.email : null]));
         } catch {
             return {};
@@ -207,7 +213,7 @@ export default class AiQuotaMeterPrefs extends ExtensionPreferences {
             return;
         const canon = GLib.canonicalize_filename(dir, null);
         // Verify before saving: the folder must hold a real login.
-        if (!probeDir(canon).length) {
+        if (!(await probeDir(canon)).length) {
             window.add_toast(new Adw.Toast({title: 'No Claude Code or Codex login found in that folder', timeout: 4}));
             return;
         }

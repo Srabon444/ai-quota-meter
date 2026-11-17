@@ -106,49 +106,85 @@ export function parseCreds(provider, text) {
 
 const MAX_CRED_BYTES = 1024 * 1024;
 
-// Only small regular files: a FIFO or device here would block the shell's
-// main loop forever on a synchronous read.
-export function isSmallRegularFile(path) {
-    try {
-        const info = Gio.File.new_for_path(path).query_info(
-            'standard::type,standard::size', Gio.FileQueryInfoFlags.NONE, null);
-        return info.get_file_type() === Gio.FileType.REGULAR && info.get_size() <= MAX_CRED_BYTES;
-    } catch {
-        return false;
-    }
-}
+Gio._promisify(Gio.File.prototype, 'query_info_async', 'query_info_finish');
+Gio._promisify(Gio.File.prototype, 'load_contents_async', 'load_contents_finish');
+Gio._promisify(Gio.File.prototype, 'enumerate_children_async', 'enumerate_children_finish');
+Gio._promisify(Gio.FileEnumerator.prototype, 'next_files_async', 'next_files_finish');
+Gio._promisify(Gio.FileEnumerator.prototype, 'close_async', 'close_finish');
 
-function readText(path) {
-    if (!isSmallRegularFile(path))
-        return null;
-    try {
-        const [ok, bytes] = GLib.file_get_contents(path);
-        return ok ? new TextDecoder().decode(bytes) : null;
-    } catch {
-        return null;
-    }
-}
+const isCancelled = e => e instanceof GLib.Error && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED);
 
-function fileId(path) {
+// Only small regular files: a FIFO or device would make a read hang.
+async function fileInfo(path, cancellable) {
     try {
-        return Gio.File.new_for_path(path)
-            .query_info('id::file', Gio.FileQueryInfoFlags.NONE, null)
-            .get_attribute_string('id::file');
-    } catch {
+        const info = await Gio.File.new_for_path(path).query_info_async(
+            'standard::type,standard::size,id::file', Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, cancellable);
+        if (info.get_file_type() !== Gio.FileType.REGULAR || info.get_size() > MAX_CRED_BYTES)
+            return null;
+        return info;
+    } catch (e) {
+        if (isCancelled(e))
+            throw e;
         return null;
     }
 }
 
-// Every provider login found in `dir` (a folder may hold both).
-export function probeDir(dir) {
+export async function isSmallRegularFile(path, cancellable = null) {
+    return !!await fileInfo(path, cancellable);
+}
+
+// Returns the file's text, or null if it is missing or not a small regular file.
+export async function readText(path, cancellable = null) {
+    if (!await fileInfo(path, cancellable))
+        return null;
+    try {
+        const [bytes] = await Gio.File.new_for_path(path).load_contents_async(cancellable);
+        return new TextDecoder().decode(bytes);
+    } catch (e) {
+        if (isCancelled(e))
+            throw e;
+        return null;
+    }
+}
+
+// Every provider login found in `dir` (a folder may hold both), with the
+// credential file's device+inode id for de-duplication.
+export async function probeDir(dir, cancellable = null) {
     const hits = [];
     for (const [provider, p] of Object.entries(PROVIDERS)) {
         const credPath = GLib.build_filenamev([dir, p.credFile]);
-        const text = readText(credPath);
+        const info = await fileInfo(credPath, cancellable);
+        if (!info)
+            continue;
+        const text = await readText(credPath, cancellable);
         if (text !== null && parseCreds(provider, text))
-            hits.push({provider, credPath});
+            hits.push({provider, credPath, id: info.get_attribute_string('id::file') ?? credPath});
     }
     return hits;
+}
+
+async function listDirs(home, cancellable) {
+    const dirs = [];
+    const links = []; // symlinked dirs last, so a duplicate keeps the real folder
+    try {
+        const en = await Gio.File.new_for_path(home).enumerate_children_async(
+            'standard::name,standard::type,standard::is-symlink', Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, cancellable);
+        for (;;) {
+            const infos = await en.next_files_async(100, GLib.PRIORITY_DEFAULT, cancellable);
+            if (!infos.length)
+                break;
+            for (const info of infos) {
+                if (info.get_file_type() === Gio.FileType.DIRECTORY)
+                    (info.get_is_symlink() ? links : dirs).push(GLib.build_filenamev([home, info.get_name()]));
+            }
+        }
+        await en.close_async(GLib.PRIORITY_DEFAULT, null);
+    } catch (e) {
+        if (isCancelled(e))
+            throw e;
+        console.warn(`AI Quota Meter: cannot scan ${home}: ${e.message}`);
+    }
+    return [...dirs.sort(), ...links.sort()];
 }
 
 export const accountKey = (provider, dir) => `${provider}:${dir}`;
@@ -159,7 +195,7 @@ export const accountKey = (provider, dir) => `${provider}:${dir}`;
 // Manual folders are always included, even without valid credentials, so the
 // user sees why they fail. Duplicates (symlinks, same dir twice) are dropped
 // by the credential file's device+inode id.
-export function detectAccounts({home = GLib.get_home_dir(), env = GLib.getenv, manual = [], auto = true} = {}) {
+export async function detectAccounts({home = GLib.get_home_dir(), env = GLib.getenv, manual = [], auto = true, cancellable = null} = {}) {
     const candidates = [];
     if (auto) {
         for (const p of Object.values(PROVIDERS)) {
@@ -167,46 +203,34 @@ export function detectAccounts({home = GLib.get_home_dir(), env = GLib.getenv, m
             if (v)
                 candidates.push(v);
         }
-        try {
-            const en = Gio.File.new_for_path(home).enumerate_children(
-                'standard::name,standard::type', Gio.FileQueryInfoFlags.NONE, null);
-            let info;
-            while ((info = en.next_file(null))) {
-                if (info.get_file_type() === Gio.FileType.DIRECTORY)
-                    candidates.push(GLib.build_filenamev([home, info.get_name()]));
-            }
-            en.close(null);
-        } catch (e) {
-            console.warn(`AI Quota Meter: cannot scan ${home}: ${e.message}`);
-        }
+        candidates.push(...await listDirs(home, cancellable));
     }
 
     const out = [];
     const seen = new Set();
-    const push = (dir, provider, credPath, isManual, valid) => {
-        const id = valid ? fileId(credPath) ?? credPath : `missing:${dir}`;
+    const push = (dir, provider, credPath, isManual, id) => {
         if (seen.has(id))
             return;
         seen.add(id);
-        out.push({key: accountKey(provider, dir), provider, dir, credPath, manual: isManual, valid});
+        out.push({key: accountKey(provider, dir), provider, dir, credPath, manual: isManual, valid: !id.startsWith('missing:')});
     };
-    const add = (dir, isManual) => {
+    const add = async (dir, isManual) => {
         // Settings can be written directly (gsettings/dconf): reject '' and
         // relative paths here too, not only in prefs.
         if (typeof dir !== 'string' || !GLib.path_is_absolute(dir))
             return;
         dir = GLib.canonicalize_filename(dir, null);
-        const hits = probeDir(dir);
+        const hits = await probeDir(dir, cancellable);
         for (const h of hits)
-            push(dir, h.provider, h.credPath, isManual, true);
+            push(dir, h.provider, h.credPath, isManual, h.id);
         if (!hits.length && isManual)
-            push(dir, 'claude', GLib.build_filenamev([dir, PROVIDERS.claude.credFile]), true, false);
+            push(dir, 'claude', GLib.build_filenamev([dir, PROVIDERS.claude.credFile]), true, `missing:${dir}`);
     };
     // Manual first so a manually-added dir keeps its "manual" flag.
     for (const d of manual)
-        add(d, true);
+        await add(d, true);
     for (const d of candidates)
-        add(d, false);
+        await add(d, false);
 
     // Stable order: by provider, then default dir first, then name.
     const rank = a => (a.dir.endsWith(`/${PROVIDERS[a.provider].defaultDir}`) ? 0 : 1);

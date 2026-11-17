@@ -148,7 +148,7 @@ test('proxy validation', () => {
 });
 
 // ---- detection on a fake home
-test('detects odd folder names, skips non-logins, dedupes symlinks', () => {
+test('detects odd folder names, skips non-logins, dedupes symlinks', async () => {
     const home = GLib.dir_make_tmp('aqm-XXXXXX');
     const mk = (d, f, body) => {
         GLib.mkdir_with_parents(`${home}/${d}`, 0o700);
@@ -169,7 +169,7 @@ test('detects odd folder names, skips non-logins, dedupes symlinks', () => {
     mk('fifo', null);
     GLib.spawn_command_line_sync(`mkfifo ${home}/fifo/.credentials.json`);
 
-    const found = detectAccounts({home, env: () => null, manual: [`${home}/manual-empty`, '', 'relative/x', 42]});
+    const found = await detectAccounts({home, env: () => null, manual: [`${home}/manual-empty`, '', 'relative/x', 42]});
     eq(found.map(a => [a.provider, a.dir.slice(home.length + 1), a.valid, a.manual]), [
         ['claude', '.claude', true, false],
         ['claude', '.claude-personal', true, false],
@@ -180,7 +180,7 @@ test('detects odd folder names, skips non-logins, dedupes symlinks', () => {
         ['codex', 'both', true, false],
     ]);
     eq(found.map(a => defaultLabel(a)), ['default', 'personal', 'both', 'manual-empty', 'work-ai', 'default', 'both']);
-    eq(detectAccounts({home, env: () => null, auto: false}).length, 0);
+    eq((await detectAccounts({home, env: () => null, auto: false})).length, 0);
     GLib.spawn_command_line_sync(`rm -rf ${home}`);
 });
 

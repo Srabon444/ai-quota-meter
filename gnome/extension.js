@@ -18,7 +18,8 @@ import {
     formatDuration, formatAgo, validProxy, isDue, sameWindow, sanitizeUsage, isSmallRegularFile,
 } from './lib/core.js';
 
-Gio._promisify(Gio.File.prototype, 'load_contents_async', 'load_contents_finish');
+Gio._promisify(Gio.File.prototype, 'replace_contents_bytes_async', 'replace_contents_finish');
+Gio._promisify(Gio.File.prototype, 'make_directory_async', 'make_directory_finish');
 Gio._promisify(Soup.Session.prototype, 'send_and_read_async', 'send_and_read_finish');
 
 const CLAUDE_USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
@@ -84,12 +85,17 @@ class Indicator extends PanelMenu.Button {
         prefs.connect('activate', () => ext.openPreferences());
         this.menu.addMenuItem(prefs);
 
-        this.menu.connect('open-state-changed', (_m, open) => {
+        this._menuOpenId = this.menu.connect('open-state-changed', (_m, open) => {
             if (open) {
                 ext.refreshAll(false); // catch up after suspend/resume
                 this.render();
             }
         });
+    }
+
+    destroy() {
+        this.menu.disconnect(this._menuOpenId);
+        super.destroy();
     }
 
     render() {
@@ -136,14 +142,15 @@ class Indicator extends PanelMenu.Button {
         }
         if (!inPanel.length) {
             this._segments.add_child(new St.Label({
-                text: accounts.length ? '' : 'No accounts', style_class: 'aqm-pct', y_align: Clutter.ActorAlign.CENTER,
+                text: !ext.scanned ? '…' : (accounts.length ? '' : 'No accounts'), style_class: 'aqm-pct', y_align: Clutter.ActorAlign.CENTER,
             }));
         }
 
         // ---- menu
         this._accountsSection.removeAll();
         if (!accounts.length) {
-            const item = new PopupMenu.PopupMenuItem('No accounts found. Add a folder in Settings.', {reactive: false});
+            const text = ext.scanned ? 'No accounts found. Add a folder in Settings.' : 'Looking for accounts…';
+            const item = new PopupMenu.PopupMenuItem(text, {reactive: false});
             this._accountsSection.addMenuItem(item);
             return;
         }
@@ -244,14 +251,15 @@ export default class AiQuotaMeterExtension extends Extension {
         this._meta = {}; // key -> {email, plan, notified: {label: resetsAt}}
         this._cachePath = GLib.build_filenamev([GLib.get_user_cache_dir(), 'ai-quota-meter', 'state.json']);
 
+        this._cancellable = new Gio.Cancellable();
+        this.scanned = false;
         this.refresher = new Refresher({
             load: (acc, c) => this._load(acc, c),
             onUpdate: (acc, st) => this._onUpdate(acc, st),
             getInterval: () => this.settings.get_int('refresh-interval'),
         });
 
-        this._loadCache();
-        this._rescan();
+        this._loadCache().catch(e => console.warn(`AI Quota Meter: ${e.message}`));
         this._createIndicator();
 
         this._settingsId = this.settings.connect('changed', (_s, key) => this._onSetting(key));
@@ -269,15 +277,22 @@ export default class AiQuotaMeterExtension extends Extension {
 
     disable() {
         this._stopTimer();
-        for (const k of ['_netDebounce', '_renderDebounce']) {
-            if (this[k])
-                GLib.source_remove(this[k]);
-            this[k] = 0;
+        if (this._netDebounce) {
+            GLib.source_remove(this._netDebounce);
+            this._netDebounce = 0;
         }
+        if (this._renderDebounce) {
+            GLib.source_remove(this._renderDebounce);
+            this._renderDebounce = 0;
+        }
+        this._cancellable?.cancel();
+        this._cancellable = null;
+        this._scanGen = (this._scanGen ?? 0) + 1;
+        this._scan = null;
         this._netMonitor?.disconnect(this._netId);
         this._netMonitor = null;
         this.settings?.disconnect(this._settingsId);
-        for (const key of [...this._monitors.keys()])
+        for (const key of [...this._monitors?.keys() ?? []])
             this._unwatch(key);
         this.refresher?.destroy();
         this.refresher = null;
@@ -302,12 +317,44 @@ export default class AiQuotaMeterExtension extends Extension {
         }
     }
 
+    // One scan at a time. A request that arrives during a scan makes that scan
+    // loop once more, so every caller's promise resolves after a scan that
+    // started after its request.
     _rescan() {
+        if (this._scan) {
+            this._scanAgain = true;
+            return this._scan;
+        }
+        const gen = this._scanGen ?? 0;
+        this._scan = (async () => {
+            const added = [];
+            try {
+                do {
+                    this._scanAgain = false;
+                    const found = await detectAccounts({
+                        manual: this.settings.get_strv('manual-folders'),
+                        auto: this.settings.get_boolean('auto-detect'),
+                        cancellable: this._cancellable,
+                    });
+                    if (gen !== (this._scanGen ?? 0))
+                        return [];
+                    added.push(...this._applyScan(found));
+                } while (this._scanAgain);
+            } catch (e) {
+                if (!(e instanceof GLib.Error && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)))
+                    console.warn(`AI Quota Meter: scan failed: ${e.message}`);
+            } finally {
+                if (gen === (this._scanGen ?? 0))
+                    this._scan = null;
+            }
+            return added;
+        })();
+        return this._scan;
+    }
+
+    _applyScan(found) {
+        this.scanned = true;
         const cfg = this._config();
-        const found = detectAccounts({
-            manual: this.settings.get_strv('manual-folders'),
-            auto: this.settings.get_boolean('auto-detect'),
-        });
         for (const acc of found) {
             const c = cfg[acc.key] ?? {};
             acc.cfg = {
@@ -369,10 +416,11 @@ export default class AiQuotaMeterExtension extends Extension {
                     GLib.source_remove(entry.debounce);
                 entry.debounce = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
                     entry.debounce = 0;
-                    this._rescan();
-                    const cur = this._accounts.find(a => a.key === acc.key);
-                    if (cur?.cfg.enabled)
-                        this.refresher.refresh(cur);
+                    this._rescan().then(() => {
+                        const cur = this._accounts?.find(a => a.key === acc.key);
+                        if (this.refresher && cur?.cfg.enabled)
+                            this.refresher.refresh(cur);
+                    });
                     return GLib.SOURCE_REMOVE;
                 });
             });
@@ -395,10 +443,12 @@ export default class AiQuotaMeterExtension extends Extension {
 
     // ------------------------------------------------------------ refresh
 
-    refreshAll(force) {
+    async refreshAll(force) {
         if (!this.refresher)
             return;
-        const added = this._rescan();
+        const added = await this._rescan();
+        if (!this.refresher)
+            return; // disabled while scanning
         const interval = this.settings.get_int('refresh-interval') * 1000;
         for (const acc of this.visibleAccounts()) {
             if (force || added.includes(acc) || isDue(this.refresher.state(acc.key), interval))
@@ -502,7 +552,7 @@ export default class AiQuotaMeterExtension extends Extension {
             throw new QuotaError('network', 'Invalid proxy URL in settings');
         // valid is fresh: every trigger rescans first. The regular-file check
         // keeps a FIFO from hanging the read forever.
-        if (!acc.valid || !isSmallRegularFile(acc.credPath))
+        if (!acc.valid || !await isSmallRegularFile(acc.credPath, cancellable))
             throw new QuotaError('nocreds', 'No credentials');
         let text;
         try {
@@ -584,36 +634,42 @@ export default class AiQuotaMeterExtension extends Extension {
 
     // ------------------------------------------------------------ cache
 
-    _loadCache() {
+    async _loadCache() {
+        const cancellable = this._cancellable;
+        let j;
         try {
-            const [, bytes] = GLib.file_get_contents(this._cachePath);
-            const j = JSON.parse(new TextDecoder().decode(bytes));
-            if (j?.version !== CACHE_VERSION || typeof j.accounts !== 'object')
-                return;
-            for (const [key, a] of Object.entries(j.accounts)) {
-                // Untrusted file: one bad entry must not break enable().
-                const usage = sanitizeUsage(a?.usage);
-                if (!usage)
-                    continue;
-                const str = v => (typeof v === 'string' ? v : null);
-                const notified = {};
-                if (a.notified && typeof a.notified === 'object') {
-                    for (const [k, v] of Object.entries(a.notified)) {
-                        if (v === null || Number.isFinite(v))
-                            notified[k] = v;
-                    }
-                }
-                this.refresher.seed(key, usage, Number.isFinite(a.fetchedAt) ? a.fetchedAt : 0);
-                this._meta[key] = {email: str(a.email), plan: str(a.plan), notified};
-            }
+            const [bytes] = await Gio.File.new_for_path(this._cachePath).load_contents_async(cancellable);
+            j = JSON.parse(new TextDecoder().decode(bytes));
         } catch {
-            // No cache yet (first run) or unreadable: start empty.
+            return; // first run, unreadable or disabled meanwhile: start empty
         }
+        if (!this.refresher || j?.version !== CACHE_VERSION || typeof j.accounts !== 'object' || !j.accounts)
+            return;
+        for (const [key, a] of Object.entries(j.accounts)) {
+            // Untrusted file: one bad entry must not break enable().
+            const usage = sanitizeUsage(a?.usage);
+            if (!usage)
+                continue;
+            const str = v => (typeof v === 'string' ? v : null);
+            const notified = {};
+            if (a.notified && typeof a.notified === 'object') {
+                for (const [k, v] of Object.entries(a.notified)) {
+                    if (v === null || Number.isFinite(v))
+                        notified[k] = v;
+                }
+            }
+            this.refresher.seed(key, usage, Number.isFinite(a.fetchedAt) ? a.fetchedAt : 0);
+            // Live data learned before the cache finished loading wins.
+            const m = this.meta(key);
+            m.email ??= str(a.email);
+            m.plan ??= str(a.plan);
+            if (!Object.keys(m.notified).length)
+                m.notified = notified;
+        }
+        this._scheduleRender();
     }
 
-    // Small file, written atomically (temp + rename) and synchronously, so
-    // two quick successes can never interleave and leave an older snapshot.
-    _saveCache() {
+    _cacheSnapshot() {
         const accounts = {};
         for (const acc of this._accounts) {
             const st = this.refresher.state(acc.key);
@@ -622,12 +678,39 @@ export default class AiQuotaMeterExtension extends Extension {
             const m = this.meta(acc.key);
             accounts[acc.key] = {usage: st.usage, fetchedAt: st.fetchedAt, email: m.email, plan: m.plan, notified: m.notified};
         }
+        return JSON.stringify({version: CACHE_VERSION, accounts});
+    }
+
+    // Writes are serialised: a save requested during a write runs once more
+    // afterwards with the latest state, so an older snapshot never lands last.
+    // replace_contents writes a temp file and renames it, so a crash cannot
+    // leave a half-written cache.
+    async _saveCache() {
+        if (this._saving) {
+            this._saveAgain = true;
+            return;
+        }
+        this._saving = true;
+        const file = Gio.File.new_for_path(this._cachePath);
         try {
-            GLib.mkdir_with_parents(GLib.path_get_dirname(this._cachePath), 0o700);
-            GLib.file_set_contents_full(this._cachePath, JSON.stringify({version: CACHE_VERSION, accounts}),
-                GLib.FileSetContentsFlags.CONSISTENT, 0o600);
+            do {
+                this._saveAgain = false;
+                if (!this.refresher)
+                    break;
+                const bytes = new GLib.Bytes(new TextEncoder().encode(this._cacheSnapshot()));
+                try {
+                    await file.get_parent().make_directory_async(GLib.PRIORITY_DEFAULT, null);
+                } catch (e) {
+                    if (!(e instanceof GLib.Error && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.EXISTS)))
+                        throw e;
+                }
+                await file.replace_contents_bytes_async(bytes, null, false,
+                    Gio.FileCreateFlags.PRIVATE | Gio.FileCreateFlags.REPLACE_DESTINATION, null);
+            } while (this._saveAgain);
         } catch (e) {
             console.warn(`AI Quota Meter: cannot write cache: ${e.message}`);
+        } finally {
+            this._saving = false;
         }
     }
 }
