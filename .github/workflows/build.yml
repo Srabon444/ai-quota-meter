@@ -1,0 +1,116 @@
+name: build
+
+# Every push builds all three versions; a v* tag also publishes a GitHub Release.
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          v="$(tr -d '[:space:]' < VERSION)"
+          if [[ "$GITHUB_REF" == refs/tags/v* && "${GITHUB_REF_NAME#v}" != "$v" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match VERSION $v" >&2; exit 1
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+  gnome:
+    needs: version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y gjs zip
+      - name: Test
+        run: gjs -m gnome/test/run.js
+      - name: Pack
+        run: scripts/pack-gnome.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-quota-meter-gnome-v${{ needs.version.outputs.version }}
+          path: dist/*.zip
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+      - run: go vet ./... && go test ./...
+      - name: Build
+        run: |
+          v="${{ needs.version.outputs.version }}"
+          mkdir -p dist
+          for arch in amd64 arm64; do
+            GOARCH=$arch CGO_ENABLED=0 go build -trimpath \
+              -ldflags "-s -w -H=windowsgui -X main.version=$v" \
+              -o "dist/ai-quota-meter-windows-v$v-$arch.exe" .
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-quota-meter-windows-v${{ needs.version.outputs.version }}
+          path: desktop/dist/*.exe
+
+  macos:
+    needs: version
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+      - run: go vet ./... && go test ./...
+      - name: Build universal app
+        run: |
+          v="${{ needs.version.outputs.version }}"
+          for arch in amd64 arm64; do
+            GOARCH=$arch CGO_ENABLED=1 go build -trimpath -ldflags "-s -w -X main.version=$v" -o "ai-quota-meter-$arch" .
+          done
+          app="dist/AI Quota Meter.app"
+          mkdir -p "$app/Contents/MacOS"
+          lipo -create -output "$app/Contents/MacOS/ai-quota-meter" ai-quota-meter-amd64 ai-quota-meter-arm64
+          sed "s/__VERSION__/$v/g" packaging/macos/Info.plist > "$app/Contents/Info.plist"
+          codesign --force --deep --sign - "$app"
+          "$app/Contents/MacOS/ai-quota-meter" -version
+          (cd dist && ditto -c -k --keepParent "AI Quota Meter.app" "ai-quota-meter-macos-v$v-universal.zip")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-quota-meter-macos-v${{ needs.version.outputs.version }}
+          path: desktop/dist/*.zip
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [version, gnome, windows, macos]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" out/* --repo "$GITHUB_REPOSITORY" --title "AI Quota Meter $GITHUB_REF_NAME" --generate-notes
