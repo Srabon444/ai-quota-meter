@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <enum id="org.gnome.shell.extensions.ai-quota-meter.display-mode">
+    <value nick="text" value="0"/><value nick="bar" value="1"/><value nick="both" value="2"/>
+  </enum>
+  <enum id="org.gnome.shell.extensions.ai-quota-meter.panel-metric">
+    <value nick="session" value="0"/><value nick="weekly" value="1"/><value nick="both" value="2"/><value nick="highest" value="3"/>
+  </enum>
+  <enum id="org.gnome.shell.extensions.ai-quota-meter.panel-box">
+    <value nick="right" value="0"/><value nick="center" value="1"/><value nick="left" value="2"/>
+  </enum>
+  <enum id="org.gnome.shell.extensions.ai-quota-meter.reset-format">
+    <value nick="relative" value="0"/><value nick="absolute" value="1"/><value nick="both" value="2"/>
+  </enum>
+  <schema id="org.gnome.shell.extensions.ai-quota-meter" path="/org/gnome/shell/extensions/ai-quota-meter/">
+    <key name="refresh-interval" type="i">
+      <range min="60" max="3600"/><default>300</default>
+      <summary>Refresh interval (seconds)</summary>
+    </key>
+    <key name="display-mode" enum="org.gnome.shell.extensions.ai-quota-meter.display-mode">
+      <default>'both'</default><summary>Panel display mode</summary>
+    </key>
+    <key name="panel-metric" enum="org.gnome.shell.extensions.ai-quota-meter.panel-metric">
+      <default>'session'</default><summary>Which usage window the panel shows</summary>
+    </key>
+    <key name="panel-box" enum="org.gnome.shell.extensions.ai-quota-meter.panel-box">
+      <default>'right'</default><summary>Panel position</summary>
+    </key>
+    <key name="show-icon" type="b"><default>true</default><summary>Show icon in panel</summary></key>
+    <key name="show-labels" type="b"><default>true</default><summary>Show account short labels in panel</summary></key>
+    <key name="colorize" type="b"><default>true</default><summary>Color panel text by usage level</summary></key>
+    <key name="warn-threshold" type="i">
+      <range min="1" max="100"/><default>70</default><summary>Warning threshold (%)</summary>
+    </key>
+    <key name="critical-threshold" type="i">
+      <range min="1" max="100"/><default>90</default><summary>Critical threshold (%)</summary>
+    </key>
+    <key name="notify" type="b"><default>true</default><summary>Notify when usage crosses the notify threshold</summary></key>
+    <key name="notify-threshold" type="i">
+      <range min="1" max="100"/><default>90</default><summary>Notify threshold (%)</summary>
+    </key>
+    <key name="notify-reset" type="b"><default>true</default><summary>Notify when a limit that was hit has reset</summary></key>
+    <key name="reset-format" enum="org.gnome.shell.extensions.ai-quota-meter.reset-format">
+      <default>'both'</default><summary>How reset times are shown</summary>
+    </key>
+    <key name="auto-detect" type="b"><default>true</default><summary>Auto-detect account folders in home</summary></key>
+    <key name="manual-folders" type="as"><default>[]</default><summary>Manually added account folders</summary></key>
+    <key name="account-config" type="s">
+      <default>'{}'</default>
+      <summary>Per-account settings (JSON: key -> {label, short, enabled, panel})</summary>
+    </key>
+    <key name="proxy-url" type="s"><default>''</default><summary>HTTP proxy URL</summary></key>
+  </schema>
+</schemalist>

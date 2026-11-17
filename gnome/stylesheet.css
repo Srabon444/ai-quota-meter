@@ -1,0 +1,37 @@
+.aqm-icon { padding: 0 4px 0 0; }
+.aqm-segments { spacing: 10px; }
+.aqm-segment { spacing: 4px; }
+.aqm-short { font-size: 0.85em; font-weight: bold; opacity: 0.75; }
+.aqm-pct { font-weight: bold; }
+.aqm-stale { opacity: 0.55; }
+
+.aqm-panel-track {
+    width: 40px;
+    height: 8px;
+    border-radius: 4px;
+    background-color: rgba(255, 255, 255, 0.2);
+}
+.aqm-panel-fill { border-radius: 4px; background-color: #ffffff; }
+
+.aqm-card { spacing: 4px; width: 300px; padding: 2px 0; }
+.aqm-card-head { spacing: 12px; }
+.aqm-title { font-weight: bold; font-size: 1.05em; }
+.aqm-sub, .aqm-dim { font-size: 0.85em; color: #a0a0a0; }
+.aqm-wlabel { font-size: 0.95em; }
+.aqm-wpct { font-weight: bold; }
+.aqm-error { font-size: 0.85em; color: #f97316; }
+
+.aqm-track {
+    height: 8px;
+    border-radius: 4px;
+    margin: 2px 0;
+    background-color: rgba(128, 128, 128, 0.25);
+}
+.aqm-fill { border-radius: 4px; }
+
+.aqm-fill.aqm-ok, .aqm-panel-fill.aqm-ok { background-color: #22c55e; }
+.aqm-fill.aqm-warn, .aqm-panel-fill.aqm-warn { background-color: #eab308; }
+.aqm-fill.aqm-critical, .aqm-panel-fill.aqm-critical { background-color: #ef4444; }
+
+.aqm-text-warn { color: #eab308; }
+.aqm-text-critical { color: #ef4444; }

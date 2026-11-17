@@ -1,0 +1,14 @@
+{
+  "uuid": "ai-quota-meter@srabon444.github.io",
+  "name": "AI Quota Meter",
+  "description": "Shows Claude Code plan usage (5-hour and weekly limits) for one or more accounts in the top panel, with experimental Codex support.\n\n* Finds account folders such as ~/.claude and ~/.claude-personal automatically, or add any folder in the settings\n* Bars, percentages, reset countdowns and threshold notifications\n* Keeps the last known values when offline or when the login has expired\n\nThe extension reads the login files that Claude Code (.credentials.json) and Codex (auth.json) keep in those folders and sends the token only to the provider's own usage API (api.anthropic.com, chatgpt.com). It never writes those files and collects no data.\n\nNot affiliated with Anthropic or OpenAI.",
+  "shell-version": [
+    "46",
+    "47",
+    "48",
+    "49"
+  ],
+  "settings-schema": "org.gnome.shell.extensions.ai-quota-meter",
+  "url": "https://github.com/Srabon444/ai-quota-meter",
+  "version-name": "1.0.0"
+}
