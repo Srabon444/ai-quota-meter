@@ -3,8 +3,10 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -108,5 +110,33 @@ func TestDetect(t *testing.T) {
 	}
 	if defaultLabel(got[1]) != "personal" || defaultLabel(got[0]) != "default" {
 		t.Fatal("labels")
+	}
+}
+
+func TestParseClaudeLimits(t *testing.T) {
+	body := `{"five_hour":{"utilization":1},"limits":[
+		{"kind":"session","group":"session","percent":99,"resets_at":"2026-11-17T18:00:00Z"},
+		{"kind":"weekly_all","group":"weekly","percent":36,"scope":null},
+		{"kind":"weekly_model","group":"weekly","percent":26,"scope":"Fable"},
+		{"kind":"weekly_model","group":"weekly","percent":12,"scope":{"display_name":"Opus"}},
+		{"kind":"weekly_sonnet","group":"weekly","percent":5},
+		{"kind":"weekly_model","group":"weekly","percent":"x","scope":"Bad"},
+		null, "junk", {"percent":50}]}`
+	ws, err := parseClaudeUsage([]byte(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, w := range ws {
+		got = append(got, fmt.Sprintf("%s|%s|%.0f", w.Label, w.Kind, w.Percent))
+	}
+	want := "5-hour|session|99 7-day|weekly|36 7-day · Fable|model|26 7-day · Opus|model|12 7-day · Sonnet|model|5"
+	if strings.Join(got, " ") != want {
+		t.Fatalf("got  %v\nwant %v", strings.Join(got, " "), want)
+	}
+	// empty limits list -> fixed fields
+	ws, _ = parseClaudeUsage([]byte(claudeSample[:len(claudeSample)-1] + `,"limits":[]}`))
+	if len(ws) != 2 {
+		t.Fatalf("fallback got %v", ws)
 	}
 }

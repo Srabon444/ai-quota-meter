@@ -24,7 +24,7 @@ const maxSlots = 8 // menu rows are created up front; systray cannot remove item
 
 type slot struct {
 	head  *systray.MenuItem
-	lines [4]*systray.MenuItem
+	lines [6]*systray.MenuItem
 }
 
 type Tray struct {

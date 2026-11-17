@@ -236,10 +236,83 @@ func toTime(v any) time.Time {
 	return time.Time{}
 }
 
+func titleCase(s string) string {
+	words := strings.Fields(strings.NewReplacer("_", " ", "-", " ").Replace(s))
+	for i, w := range words {
+		words[i] = strings.ToUpper(w[:1]) + w[1:]
+	}
+	return strings.Join(words, " ")
+}
+
+// scopeName: the model of a scoped limit, given as a string or an object.
+func scopeName(scope any) string {
+	switch s := scope.(type) {
+	case string:
+		return strings.TrimSpace(s)
+	case map[string]any:
+		for _, k := range []string{"display_name", "name", "model", "label"} {
+			if v, ok := s[k].(string); ok && strings.TrimSpace(v) != "" {
+				return strings.TrimSpace(v)
+			}
+		}
+	}
+	return ""
+}
+
+// limitWindow maps one entry of the API's `limits` list. session -> "5-hour",
+// weekly_all -> "7-day", any other weekly limit is per model ("7-day · Fable").
+func limitWindow(v any) (Window, bool) {
+	l, ok := v.(map[string]any)
+	if !ok {
+		return Window{}, false
+	}
+	p, ok := l["percent"].(float64)
+	if !ok || math.IsNaN(p) || math.IsInf(p, 0) {
+		return Window{}, false
+	}
+	kind, _ := l["kind"].(string)
+	group, _ := l["group"].(string)
+	resets := toTime(l["resets_at"])
+	switch {
+	case group == "session" || kind == "session":
+		return Window{Label: "5-hour", Kind: "session", Percent: p, ResetsAt: resets}, true
+	case group == "weekly" || strings.HasPrefix(kind, "weekly"):
+		model := scopeName(l["scope"])
+		if model == "" && strings.HasPrefix(kind, "weekly_") && kind != "weekly_all" {
+			model = titleCase(kind[len("weekly_"):])
+		}
+		if model == "" {
+			return Window{Label: "7-day", Kind: "weekly", Percent: p, ResetsAt: resets}, true
+		}
+		return Window{Label: "7-day · " + model, Kind: "model", Percent: p, ResetsAt: resets}, true
+	}
+	name := group
+	if name == "" {
+		name = kind
+	}
+	if name == "" {
+		return Window{}, false
+	}
+	return Window{Label: titleCase(name), Kind: "model", Percent: p, ResetsAt: resets}, true
+}
+
+// parseClaudeUsage prefers the generic `limits` list, which also carries
+// per-model limits (e.g. a weekly Fable limit), then the fixed fields.
 func parseClaudeUsage(data []byte) ([]Window, error) {
 	var j map[string]any
 	if err := json.Unmarshal(data, &j); err != nil {
 		return nil, fmt.Errorf("invalid JSON")
+	}
+	var ws []Window
+	if list, ok := j["limits"].([]any); ok {
+		for _, v := range list {
+			if w, ok := limitWindow(v); ok {
+				ws = append(ws, w)
+			}
+		}
+	}
+	if len(ws) > 0 {
+		return ws, nil
 	}
 	defs := [][3]string{
 		{"five_hour", "5-hour", "session"},
@@ -247,7 +320,6 @@ func parseClaudeUsage(data []byte) ([]Window, error) {
 		{"seven_day_opus", "7-day Opus", "model"},
 		{"seven_day_sonnet", "7-day Sonnet", "model"},
 	}
-	var ws []Window
 	for _, d := range defs {
 		w, ok := j[d[0]].(map[string]any)
 		if !ok {

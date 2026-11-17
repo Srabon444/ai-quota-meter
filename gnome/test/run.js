@@ -38,6 +38,31 @@ test('claude usage rejects error body', () => {
     }
     throw new Error('no throw');
 });
+test('claude limits list: real shape + per-model limits in any scope shape', () => {
+    const real = {...CLAUDE, limits: [
+        {kind: 'session', group: 'session', percent: 100, severity: 'critical', resets_at: '2026-11-17T18:09:59.897513+00:00', scope: null, is_active: true},
+        {kind: 'weekly_all', group: 'weekly', percent: 81, severity: 'warning', resets_at: '2026-11-20T16:59:59.897543+00:00', scope: null, is_active: false},
+    ]};
+    eq(parseClaudeUsage(real).windows.map(w => [w.label, w.kind, w.percent]), [['5-hour', 'session', 100], ['7-day', 'weekly', 81]]);
+    const fable = {limits: [
+        {kind: 'session', group: 'session', percent: 99, resets_at: '2026-11-17T18:00:00Z'},
+        {kind: 'weekly_all', group: 'weekly', percent: 36},
+        {kind: 'weekly_model', group: 'weekly', percent: 26, scope: 'Fable'},
+        {kind: 'weekly_model', group: 'weekly', percent: 12, scope: {display_name: 'Opus'}},
+        {kind: 'weekly_sonnet', group: 'weekly', percent: 5, scope: null},
+        {kind: 'weekly_model', group: 'weekly', percent: 'x', scope: 'Bad'},
+        null, 'junk', {percent: 50},
+    ]};
+    eq(parseClaudeUsage(fable).windows.map(w => [w.label, w.kind, w.percent]), [
+        ['5-hour', 'session', 99], ['7-day', 'weekly', 36], ['7-day · Fable', 'model', 26],
+        ['7-day · Opus', 'model', 12], ['7-day · Sonnet', 'model', 5],
+    ]);
+    eq(panelPercent(parseClaudeUsage(fable), 'highest', 0), [99]);
+    // empty / unusable limits list -> legacy fields still work
+    eq(parseClaudeUsage({...CLAUDE, limits: []}).windows.length, 2);
+    eq(parseClaudeUsage({...CLAUDE, limits: [{percent: 'x'}]}).windows.length, 2);
+});
+
 test('codex usage parses windows', () => {
     const u = parseCodexUsage({plan_type: 'plus', rate_limit: {
         primary_window: {used_percent: 42, limit_window_seconds: 18000, reset_at: 1800000000},

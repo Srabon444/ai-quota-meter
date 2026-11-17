@@ -268,12 +268,54 @@ const CLAUDE_WINDOWS = [
     ['seven_day_sonnet', '7-day Sonnet', 'model'],
 ];
 
+const titleCase = s => s.replace(/[_-]+/g, ' ').trim().replace(/\b\w/g, ch => ch.toUpperCase());
+
+// Model name of a scoped limit: a string, or an object with a name field.
+function scopeName(scope) {
+    if (typeof scope === 'string')
+        return scope.trim() || null;
+    if (scope && typeof scope === 'object') {
+        for (const k of ['display_name', 'name', 'model', 'label']) {
+            if (typeof scope[k] === 'string' && scope[k].trim())
+                return scope[k].trim();
+        }
+    }
+    return null;
+}
+
+// One entry of the API's `limits` list -> window, or null if unusable.
+// session -> "5-hour"; weekly_all -> "7-day"; any other weekly limit is
+// per model -> "7-day · Fable" (name from scope, else from the kind suffix).
+function limitWindow(l) {
+    if (!l || typeof l !== 'object' || typeof l.percent !== 'number' || !Number.isFinite(l.percent))
+        return null;
+    const kind = typeof l.kind === 'string' ? l.kind : '';
+    const group = typeof l.group === 'string' ? l.group : '';
+    const resetsAt = toMs(l.resets_at);
+    if (group === 'session' || kind === 'session')
+        return {label: '5-hour', kind: 'session', percent: l.percent, resetsAt};
+    if (group === 'weekly' || kind.startsWith('weekly')) {
+        const model = scopeName(l.scope) ?? (kind.startsWith('weekly_') && kind !== 'weekly_all' ? titleCase(kind.slice(7)) : null);
+        if (!model)
+            return {label: '7-day', kind: 'weekly', percent: l.percent, resetsAt};
+        return {label: `7-day · ${model}`, kind: 'model', percent: l.percent, resetsAt};
+    }
+    const name = group || kind;
+    return name ? {label: titleCase(name), kind: 'model', percent: l.percent, resetsAt} : null;
+}
+
+// Prefers the generic `limits` list, which also carries per-model limits
+// (e.g. a weekly Fable limit); falls back to the fixed fields.
 export function parseClaudeUsage(j) {
-    const windows = [];
-    for (const [k, label, kind] of CLAUDE_WINDOWS) {
-        const w = j?.[k];
-        if (w && typeof w.utilization === 'number' && Number.isFinite(w.utilization))
-            windows.push({label, kind, percent: w.utilization, resetsAt: toMs(w.resets_at)});
+    let windows = [];
+    if (Array.isArray(j?.limits))
+        windows = j.limits.map(limitWindow).filter(Boolean);
+    if (!windows.length) {
+        for (const [k, label, kind] of CLAUDE_WINDOWS) {
+            const w = j?.[k];
+            if (w && typeof w.utilization === 'number' && Number.isFinite(w.utilization))
+                windows.push({label, kind, percent: w.utilization, resetsAt: toMs(w.resets_at)});
+        }
     }
     if (!windows.length)
         throw new QuotaError('parse', 'Unrecognized usage response');
