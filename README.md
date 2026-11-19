@@ -19,7 +19,7 @@ Available as a GNOME Shell extension (Linux) and as a menu bar / system tray app
 GNOME Shell 46 to 49. Install it from [extensions.gnome.org](https://extensions.gnome.org/extension/11808/), or download `ai-quota-meter-gnome-v….zip` from [Releases](https://github.com/Srabon444/ai-quota-meter/releases) and run:
 
 ```bash
-gnome-extensions install --force ai-quota-meter-gnome-v1.0.1.zip
+gnome-extensions install --force ai-quota-meter-gnome-v1.0.2.zip
 ```
 
 `--force` replaces an older copy, so the same command also updates it.
@@ -49,11 +49,12 @@ You need to be logged in to Claude Code (`claude`) at least once. Every folder i
 
 **GNOME:** click the meter in the top panel to see each account. Open **Settings** from the menu to:
 
-- rename accounts and set the short label shown in the panel,
+- rename accounts, and set the short label shown in the panel and its color,
 - hide an account, or keep it out of the panel,
 - add a folder that was not found automatically,
 - choose bar, text or both, and which limit the panel shows,
-- set warning levels, notifications and a proxy.
+- show reset times as a countdown, a clock time or both, in 12- or 24-hour format (follows the system clock by default),
+- set warning levels (bars turn yellow at 70% and red at 90% by default), notifications and a proxy.
 
 **macOS / Windows:** the menu shows each account. **Open settings file** opens `config.json`:
 
@@ -92,7 +93,7 @@ go build -o ai-quota-meter .
 ./ai-quota-meter -check   # fetch every account once and print it
 ```
 
-Every push builds all three versions in GitHub Actions. Pushing a tag such as `v1.0.1` (matching `VERSION`) publishes them as a release.
+Every push builds all three versions in GitHub Actions. Pushing a tag such as `v1.0.2` (matching `VERSION`) publishes them as a release.
 
 ## Notes
 
