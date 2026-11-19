@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 import Adw from 'gi://Adw';
+import Gdk from 'gi://Gdk';
 import Gtk from 'gi://Gtk';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
-import {PROVIDERS, detectAccounts, defaultLabel, probeDir, readText, validProxy} from './lib/core.js';
+import {PROVIDERS, detectAccounts, defaultLabel, probeDir, readText, validColor, validProxy} from './lib/core.js';
 
 Gio._promisify(Gtk.FileDialog.prototype, 'select_folder', 'select_folder_finish');
 
@@ -180,6 +181,7 @@ export default class AiQuotaMeterPrefs extends ExtensionPreferences {
             this._patchConfig(settings, acc.key, {short: v});
         });
         row.add_row(shortRow);
+        row.add_row(this._colorRow(settings, acc, validColor(c.color)));
 
         const panel = new Adw.SwitchRow({title: 'Show in top panel', active: c.panel !== false});
         panel.connect('notify::active', () => this._patchConfig(settings, acc.key, {panel: panel.active}));
@@ -194,6 +196,41 @@ export default class AiQuotaMeterPrefs extends ExtensionPreferences {
             remove.add_suffix(btn);
             row.add_row(remove);
         }
+        return row;
+    }
+
+    // No saved color = the panel's default label color (white picker swatch).
+    _colorRow(settings, acc, color) {
+        const row = new Adw.ActionRow({title: 'Panel label color', subtitle: color ? null : 'Default'});
+        const rgba = c => {
+            const v = new Gdk.RGBA();
+            v.parse(c ?? '#ffffff');
+            return v;
+        };
+        const btn = new Gtk.ColorDialogButton({
+            dialog: new Gtk.ColorDialog({with_alpha: false}), rgba: rgba(color), valign: Gtk.Align.CENTER,
+        });
+        let quiet = false;
+        btn.connect('notify::rgba', () => {
+            if (quiet)
+                return;
+            const hex = `#${[btn.rgba.red, btn.rgba.green, btn.rgba.blue]
+                .map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('')}`;
+            this._patchConfig(settings, acc.key, {color: hex});
+            row.subtitle = '';
+        });
+        const reset = new Gtk.Button({
+            icon_name: 'edit-undo-symbolic', tooltip_text: 'Use default color', valign: Gtk.Align.CENTER, css_classes: ['flat'],
+        });
+        reset.connect('clicked', () => {
+            quiet = true;
+            btn.rgba = rgba(null);
+            quiet = false;
+            this._patchConfig(settings, acc.key, {color: ''});
+            row.subtitle = 'Default';
+        });
+        row.add_suffix(btn);
+        row.add_suffix(reset);
         return row;
     }
 
@@ -248,6 +285,8 @@ export default class AiQuotaMeterPrefs extends ExtensionPreferences {
         levels.add(spinRow(settings, 'critical-threshold', 'Critical at (%)', null, 1, 100, 1));
         levels.add(comboRow(window, settings, 'reset-format', 'Reset time', 'How reset times appear in the menu',
             [['relative', 'Countdown (in 2h 5m)'], ['absolute', 'Clock time (18:10)'], ['both', 'Both']]));
+        levels.add(comboRow(window, settings, 'clock-format', 'Clock', 'Format of reset times',
+            [['system', 'Same as system'], ['24h', '24-hour (18:10)'], ['12h', '12-hour (6:10 PM)']]));
         page.add(levels);
         return page;
     }

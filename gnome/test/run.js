@@ -4,7 +4,7 @@ import GLib from 'gi://GLib';
 import System from 'system';
 import {
     QuotaError, Refresher, backoffSeconds, barWidth, defaultLabel, detectAccounts, effectivePercent,
-    errorFromStatus, jwtClaims, panelPercent, parseClaudeUsage, parseCodexUsage, parseCreds, validProxy,
+    errorFromStatus, jwtClaims, panelPercent, parseClaudeUsage, parseCodexUsage, parseCreds, validColor, validProxy,
     isDue, sameWindow, sanitizeUsage,
 } from '../lib/core.js';
 
@@ -170,6 +170,14 @@ test('proxy validation', () => {
     eq(validProxy('localhost:11809'), false);
     eq(validProxy('ftp://x'), false);
     eq(validProxy(''), false);
+    eq(validColor('#FF8800'), '#ff8800');
+    eq(validColor('#0f8'), '#00ff88');
+    eq(validColor(' #abcdef '), '#abcdef');
+    eq(validColor('red'), null);
+    eq(validColor('#ff8800; background: url(x)'), null);
+    eq(validColor('#ff88'), null);
+    eq(validColor(''), null);
+    eq(validColor(42), null);
 });
 
 // ---- detection on a fake home

@@ -15,7 +15,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import {
     PROVIDERS, QuotaError, Refresher, detectAccounts, defaultLabel, errorFromStatus, parseCreds,
     parseClaudeUsage, parseCodexUsage, effectivePercent, barWidth, level, panelPercent,
-    formatDuration, formatAgo, validProxy, isDue, sameWindow, sanitizeUsage, isSmallRegularFile,
+    formatDuration, formatAgo, validColor, validProxy, isDue, sameWindow, sanitizeUsage, isSmallRegularFile,
 } from './lib/core.js';
 
 Gio._promisify(Gio.File.prototype, 'replace_contents_bytes_async', 'replace_contents_finish');
@@ -119,7 +119,10 @@ class Indicator extends PanelMenu.Button {
             const st = ext.refresher.state(acc.key);
             const seg = new St.BoxLayout({style_class: 'aqm-segment'});
             if (showLabels && inPanel.length > 1)
-                seg.add_child(new St.Label({text: ext.short(acc), style_class: 'aqm-short', y_align: Clutter.ActorAlign.CENTER}));
+                seg.add_child(new St.Label({
+                    text: ext.short(acc), style_class: 'aqm-short', y_align: Clutter.ActorAlign.CENTER,
+                    style: acc.cfg.color ? `color: ${acc.cfg.color};` : null,
+                }));
             const values = st.usage ? panelPercent(st.usage, metric, now) : [null];
             const top = Math.max(...values.map(v => v ?? 0));
             if (mode !== 'text') {
@@ -220,7 +223,10 @@ class Indicator extends PanelMenu.Button {
         const rel = `Resets in ${formatDuration(resetsAt - now)}`;
         const dt = GLib.DateTime.new_from_unix_local(Math.floor(resetsAt / 1000));
         const sameDay = dt.format('%F') === GLib.DateTime.new_now_local().format('%F');
-        const abs = dt.format(sameDay ? '%H:%M' : '%a %d %b, %H:%M');
+        const clock = this._ext.settings.get_string('clock-format');
+        const h12 = clock === '12h' || (clock === 'system' && this._ext.desktopSettings.get_string('clock-format') === '12h');
+        const time = h12 ? '%-I:%M %p' : '%H:%M';
+        const abs = dt.format(sameDay ? time : `%a %d %b, ${time}`);
         if (fmt === 'relative')
             return rel;
         if (fmt === 'absolute')
@@ -245,6 +251,8 @@ class Indicator extends PanelMenu.Button {
 export default class AiQuotaMeterExtension extends Extension {
     enable() {
         this.settings = this.getSettings();
+        this.desktopSettings = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
+        this._desktopId = this.desktopSettings.connect('changed::clock-format', () => this._scheduleRender());
         this._session = this._createSession();
         this._accounts = [];
         this._monitors = new Map(); // key -> {monitor, id, debounce}
@@ -292,6 +300,8 @@ export default class AiQuotaMeterExtension extends Extension {
         this._netMonitor?.disconnect(this._netId);
         this._netMonitor = null;
         this.settings?.disconnect(this._settingsId);
+        this.desktopSettings?.disconnect(this._desktopId);
+        this.desktopSettings = null;
         for (const key of [...this._monitors?.keys() ?? []])
             this._unwatch(key);
         this.refresher?.destroy();
@@ -360,6 +370,7 @@ export default class AiQuotaMeterExtension extends Extension {
             acc.cfg = {
                 label: (typeof c.label === 'string' && c.label.trim().slice(0, 40)) || null,
                 short: (typeof c.short === 'string' && c.short.trim().slice(0, 4)) || null,
+                color: validColor(c.color),
                 enabled: c.enabled !== false,
                 panel: c.panel !== false,
             };

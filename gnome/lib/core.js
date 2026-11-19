@@ -46,6 +46,16 @@ export function validProxy(v) {
     }
 }
 
+// '#RRGGBB' / '#rgb' -> '#rrggbb'; anything else (it ends up in inline CSS) -> null.
+export function validColor(v) {
+    if (typeof v !== 'string')
+        return null;
+    const m = v.trim().toLowerCase().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/);
+    if (!m)
+        return null;
+    return m[1].length === 3 ? `#${[...m[1]].map(c => c + c).join('')}` : `#${m[1]}`;
+}
+
 // ---------------------------------------------------------------- credentials
 
 function b64urlDecode(s) {
