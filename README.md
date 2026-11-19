@@ -5,6 +5,7 @@ See how much of your Claude Code plan you have used, for every account you are l
 ![AI Quota Meter in the GNOME top panel](docs/screenshot.png)
 
 - Shows the 5-hour and weekly limits, with bars, percentages and when each one resets.
+- Shows per-model weekly limits too (for example a weekly Fable limit) when your plan has them.
 - Works with several accounts at once (for example `~/.claude` for work and `~/.claude-personal` for home).
 - Remembers the last values, so they show up right after you log in, even offline.
 - Codex (ChatGPT) accounts are supported experimentally.
@@ -15,13 +16,19 @@ Available as a GNOME Shell extension (Linux) and as a menu bar / system tray app
 
 ### GNOME (Ubuntu, Fedora, …)
 
-GNOME Shell 46 to 49. Install it from [extensions.gnome.org](https://extensions.gnome.org/), or from a release zip:
+GNOME Shell 46 to 49. Install it from [extensions.gnome.org](https://extensions.gnome.org/extension/11808/), or download `ai-quota-meter-gnome-v….zip` from [Releases](https://github.com/Srabon444/ai-quota-meter/releases) and run:
 
 ```bash
-gnome-extensions install ai-quota-meter-gnome-v1.0.0.zip
+gnome-extensions install --force ai-quota-meter-gnome-v1.0.1.zip
 ```
 
-Log out and back in, then turn it on in the Extensions app.
+`--force` replaces an older copy, so the same command also updates it.
+
+Log out and back in (GNOME only picks up new extensions at login), then turn it on in the Extensions app or with:
+
+```bash
+gnome-extensions enable ai-quota-meter@srabon444.github.io
+```
 
 ### macOS
 
