@@ -19,7 +19,7 @@ Available as a GNOME Shell extension (Linux) and as a menu bar / system tray app
 GNOME Shell 46 to 49. Install it from [extensions.gnome.org](https://extensions.gnome.org/extension/11808/), or download `ai-quota-meter-gnome-v….zip` from [Releases](https://github.com/Srabon444/ai-quota-meter/releases) and run:
 
 ```bash
-gnome-extensions install --force ai-quota-meter-gnome-v1.0.2.zip
+gnome-extensions install --force ai-quota-meter-gnome-v1.1.0.zip
 ```
 
 `--force` replaces an older copy, so the same command also updates it.
@@ -39,7 +39,7 @@ gnome-extensions enable ai-quota-meter@srabon444.github.io
 
 ### Windows
 
-Download `ai-quota-meter-windows-v…-amd64.exe` (or `-arm64.exe`) from [Releases](https://github.com/Srabon444/ai-quota-meter/releases) and run it. The icon appears in the system tray; hover it to see usage, click or right-click it for details.
+Download `ai-quota-meter-windows-v…-amd64.exe` (or `-arm64.exe`) from [Releases](https://github.com/Srabon444/ai-quota-meter/releases) and run it. The icon appears in the system tray (it may sit under the `^` arrow); click it to see every account's usage.
 
 To start it with Windows, press `Win + R`, type `shell:startup`, and put a shortcut to the exe in that folder.
 
@@ -54,9 +54,10 @@ You need to be logged in to Claude Code (`claude`) at least once. Every folder i
 - add a folder that was not found automatically,
 - choose bar, text or both, and which limit the panel shows,
 - show reset times as a countdown, a clock time or both, in 12- or 24-hour format (follows the system clock by default),
+- pick a light or dark menu, or follow the system,
 - set warning levels (bars turn yellow at 70% and red at 90% by default), notifications and a proxy.
 
-**macOS / Windows:** the menu shows each account. **Open settings file** opens `config.json`:
+**macOS / Windows:** one click opens a menu with every account and its limits, reset times and status. Light and dark mode follow the system; **Theme** in the menu switches to Light or Dark. **Open settings file** opens `config.json`:
 
 ```json
 {
@@ -64,7 +65,8 @@ You need to be logged in to Claude Code (`claude`) at least once. Every folder i
   "extra_folders": ["/Users/me/claude-work"],
   "labels": {"/Users/me/.claude": "Work"},
   "hidden": [],
-  "proxy": ""
+  "proxy": "",
+  "theme": "system"
 }
 ```
 
@@ -93,7 +95,7 @@ go build -o ai-quota-meter .
 ./ai-quota-meter -check   # fetch every account once and print it
 ```
 
-Every push builds all three versions in GitHub Actions. Pushing a tag such as `v1.0.2` (matching `VERSION`) publishes them as a release.
+Every push builds all three versions in GitHub Actions. Pushing a tag such as `v1.1.0` (matching `VERSION`) publishes them as a release.
 
 ## Notes
 
