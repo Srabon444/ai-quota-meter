@@ -16,7 +16,7 @@
 .aqm-card { spacing: 4px; width: 300px; padding: 2px 0; }
 .aqm-card-head { spacing: 12px; }
 .aqm-title { font-weight: bold; font-size: 1.05em; }
-.aqm-sub, .aqm-dim { font-size: 0.85em; color: #a0a0a0; }
+.aqm-sub, .aqm-dim { font-size: 0.85em; opacity: 0.65; }
 .aqm-wlabel { font-size: 0.95em; }
 .aqm-wpct { font-weight: bold; }
 .aqm-error { font-size: 0.85em; color: #f97316; }
@@ -35,3 +35,17 @@
 
 .aqm-text-warn { color: #eab308; }
 .aqm-text-critical { color: #ef4444; }
+
+.aqm-menu-light { -arrow-background-color: #fafafb; -arrow-border-color: rgba(0, 0, 0, 0.12); }
+.aqm-menu-light .popup-menu-content { background-color: #fafafb; color: #222226; border: 1px solid rgba(0, 0, 0, 0.12); }
+.aqm-menu-light .popup-menu-item { color: #222226; }
+.aqm-menu-light .popup-menu-item:hover,
+.aqm-menu-light .popup-menu-item:focus { background-color: rgba(0, 0, 0, 0.08); color: #222226; }
+.aqm-menu-light .popup-separator-menu-item-separator { background-color: rgba(0, 0, 0, 0.12); }
+
+.aqm-menu-dark { -arrow-background-color: #2e2e32; -arrow-border-color: rgba(255, 255, 255, 0.1); }
+.aqm-menu-dark .popup-menu-content { background-color: #2e2e32; color: #f2f2f2; border: 1px solid rgba(255, 255, 255, 0.1); }
+.aqm-menu-dark .popup-menu-item { color: #f2f2f2; }
+.aqm-menu-dark .popup-menu-item:hover,
+.aqm-menu-dark .popup-menu-item:focus { background-color: rgba(255, 255, 255, 0.1); color: #f2f2f2; }
+.aqm-menu-dark .popup-separator-menu-item-separator { background-color: rgba(255, 255, 255, 0.1); }

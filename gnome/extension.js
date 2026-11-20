@@ -102,6 +102,9 @@ class Indicator extends PanelMenu.Button {
         const ext = this._ext;
         const s = ext.settings;
         const now = Date.now();
+        const menuTheme = s.get_string('menu-theme');
+        for (const t of ['light', 'dark'])
+            this.menu.actor[menuTheme === t ? 'add_style_class_name' : 'remove_style_class_name'](`aqm-menu-${t}`);
         const warn = s.get_int('warn-threshold');
         const crit = s.get_int('critical-threshold');
         const mode = s.get_string('display-mode');

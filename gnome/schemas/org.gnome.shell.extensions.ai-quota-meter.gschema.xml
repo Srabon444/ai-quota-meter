@@ -15,6 +15,9 @@
   <enum id="org.gnome.shell.extensions.ai-quota-meter.clock-format">
     <value nick="system" value="0"/><value nick="24h" value="1"/><value nick="12h" value="2"/>
   </enum>
+  <enum id="org.gnome.shell.extensions.ai-quota-meter.menu-theme">
+    <value nick="system" value="0"/><value nick="light" value="1"/><value nick="dark" value="2"/>
+  </enum>
   <schema id="org.gnome.shell.extensions.ai-quota-meter" path="/org/gnome/shell/extensions/ai-quota-meter/">
     <key name="refresh-interval" type="i">
       <range min="60" max="3600"/><default>300</default>
@@ -48,6 +51,9 @@
     </key>
     <key name="clock-format" enum="org.gnome.shell.extensions.ai-quota-meter.clock-format">
       <default>'system'</default><summary>12- or 24-hour reset times; system follows the GNOME clock setting</summary>
+    </key>
+    <key name="menu-theme" enum="org.gnome.shell.extensions.ai-quota-meter.menu-theme">
+      <default>'system'</default><summary>Menu colors; system follows the shell style</summary>
     </key>
     <key name="auto-detect" type="b"><default>true</default><summary>Auto-detect account folders in home</summary></key>
     <key name="manual-folders" type="as"><default>[]</default><summary>Manually added account folders</summary></key>

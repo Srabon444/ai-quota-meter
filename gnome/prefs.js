@@ -280,6 +280,11 @@ export default class AiQuotaMeterPrefs extends ExtensionPreferences {
         panel.add(switchRow(settings, 'colorize', 'Color by usage level', 'Yellow at warning, red at critical'));
         page.add(panel);
 
+        const menu = new Adw.PreferencesGroup({title: 'Menu'});
+        menu.add(comboRow(window, settings, 'menu-theme', 'Theme', 'Light or dark menu colors',
+            [['system', 'Same as system'], ['light', 'Light'], ['dark', 'Dark']]));
+        page.add(menu);
+
         const levels = new Adw.PreferencesGroup({title: 'Levels'});
         levels.add(spinRow(settings, 'warn-threshold', 'Warning at (%)', null, 1, 100, 1));
         levels.add(spinRow(settings, 'critical-threshold', 'Critical at (%)', null, 1, 100, 1));
