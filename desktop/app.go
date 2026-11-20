@@ -31,6 +31,7 @@ type Config struct {
 	Labels         map[string]string `json:"labels"` // folder -> display name
 	Hidden         []string          `json:"hidden"` // folders to ignore
 	Proxy          string            `json:"proxy"`
+	Theme          string            `json:"theme"`
 }
 
 func (c *Config) interval() time.Duration {
@@ -102,7 +103,7 @@ func (a *App) loadConfig() {
 	data, err := os.ReadFile(a.cfgPath)
 	if errors.Is(err, os.ErrNotExist) {
 		_ = os.MkdirAll(filepath.Dir(a.cfgPath), 0o700)
-		b, _ := json.MarshalIndent(Config{RefreshSeconds: 300, ExtraFolders: []string{}, Labels: map[string]string{}, Hidden: []string{}}, "", "  ")
+		b, _ := json.MarshalIndent(Config{RefreshSeconds: 300, ExtraFolders: []string{}, Labels: map[string]string{}, Hidden: []string{}, Theme: "system"}, "", "  ")
 		_ = os.WriteFile(a.cfgPath, b, 0o600)
 	} else if err == nil && json.Unmarshal(data, &a.cfg) != nil {
 		log.Printf("config %s is not valid JSON, using defaults", a.cfgPath)

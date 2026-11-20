@@ -59,7 +59,7 @@ func TestEffectiveAndRing(t *testing.T) {
 	if clampFraction(150) != 1 || clampFraction(-5) != 0 || clampFraction(50) != 0.5 {
 		t.Fatal("clamp")
 	}
-	if len(ringPNG(100)) == 0 || len(pngToICO(ringPNG(-1))) < 22 {
+	if len(ringPNG(100, false)) == 0 || len(pngToICO(ringPNG(-1, true))) < 22 {
 		t.Fatal("icon")
 	}
 }
@@ -138,5 +138,30 @@ func TestParseClaudeLimits(t *testing.T) {
 	ws, _ = parseClaudeUsage([]byte(claudeSample[:len(claudeSample)-1] + `,"limits":[]}`))
 	if len(ws) != 2 {
 		t.Fatalf("fallback got %v", ws)
+	}
+}
+
+func TestThemeHelpers(t *testing.T) {
+	now := time.Date(2026, 11, 20, 9, 0, 0, 0, time.Local)
+	if got := resetText(now.Add(5*time.Hour+5*time.Minute), now, true); got != "resets 2:05 PM (in 5h 5m)" {
+		t.Fatal(got)
+	}
+	if got := resetText(now.Add(36*time.Hour), now, false); got != "resets Sat 21:00 (in 1d 12h)" {
+		t.Fatal(got)
+	}
+	if iconStep(33) != 35 || iconStep(-1) != -1 || iconStep(140) != 100 {
+		t.Fatal("iconStep")
+	}
+	if !pickDark("system", true) || pickDark("light", true) || !pickDark("dark", false) || normalizeTheme("x") != "system" {
+		t.Fatal("pickDark")
+	}
+	dir := t.TempDir() + "/c.json"
+	_ = os.WriteFile(dir, []byte(`{"refresh_seconds":120}`), 0o600)
+	if err := saveTheme(dir, "dark"); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(dir)
+	if !strings.Contains(string(b), `"theme": "dark"`) || !strings.Contains(string(b), `"refresh_seconds": 120`) {
+		t.Fatal(string(b))
 	}
 }
